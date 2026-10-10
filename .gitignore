@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+plans/
+uv.lock
+build/
+dist/
+# credentials & local data — never commit these
+cookies*.txt
+*.cookies
+.ytmsync/

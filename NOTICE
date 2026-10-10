@@ -1,0 +1,4 @@
+ytmsync includes code adapted from:
+- KraXen72/shira (MIT License, Copyright (c) 2024 KraXen72): title cleaning, cover crop/pad heuristics.
+- spotDL/spotify-downloader (MIT License, Copyright (c) 2021 spotDL Developers): sync/filename/m3u/embedding ideas.
+Lyrics behaviour is modelled on better-lyrics (GPL-3.0); no code was copied from it.

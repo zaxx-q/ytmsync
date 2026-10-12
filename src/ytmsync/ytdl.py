@@ -4,6 +4,8 @@ import logging
 import re
 import shutil
 import time
+import urllib.error
+import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -239,8 +241,110 @@ def download_audio(
             kind = classify_error(str(e))
             last = DownloadFailure(kind, str(e))
             if kind in ("unavailable", "auth", "other"):
+                # YouTube Music auto-generated "Topic" tracks (Art Track Videos) are
+                # often UNPLAYABLE via yt-dlp but YTM silently redirects to a free
+                # counterpart (official upload / different distributor).  Try that
+                # before giving up.  See https://github.com/yt-dlp/yt-dlp/issues/14066
+                if kind == "unavailable":
+                    alt = _resolve_ytm_redirect(video_id, s.cookies)
+                    if alt:
+                        log.info(
+                            "%s: unavailable, trying YTM redirect -> %s", video_id, alt
+                        )
+                        return _download_redirected(
+                            opts, alt, video_id, workdir, s.format
+                        )
                 raise last from e
             time.sleep(
                 30 * attempt if kind == "rate_limit" else 3 * attempt
             )  # backoff, then retry
     raise last or DownloadFailure("other", "download failed")
+
+
+def _resolve_ytm_redirect(video_id: str, cookies: Path | None = None) -> str | None:
+    """Ask music.youtube.com for the canonical URL of a video.
+
+    YouTube Music silently redirects unavailable Art Track Videos (distributor
+    changes, geo-blocks, Premium-only) to a free counterpart.  The redirect
+    target is embedded in the HTML as ``<link rel="canonical" …>``.
+
+    Returns the *different* video ID if a redirect exists, else ``None``.
+    See https://github.com/yt-dlp/yt-dlp/issues/14066
+    """
+    import http.cookiejar
+
+    url = f"https://music.youtube.com/watch?v={video_id}"
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+    }
+    # Use cookies if available — avoids consent-wall redirects and 429s
+    opener: urllib.request.OpenerDirector | None = None
+    if cookies and cookies.exists():
+        try:
+            jar = http.cookiejar.MozillaCookieJar(str(cookies))
+            jar.load(ignore_discard=True, ignore_expires=True)
+            opener = urllib.request.build_opener(
+                urllib.request.HTTPCookieProcessor(jar)
+            )
+        except Exception:
+            log.debug("Failed to load cookies for YTM redirect", exc_info=True)
+    fetch = opener.open if opener else urllib.request.urlopen
+    for attempt in range(1, 4):
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with fetch(req, timeout=15) as resp:
+                html = resp.read().decode("utf-8", errors="replace")
+            m = re.search(r'<link rel="canonical" href="[^"]*[?&]v=([^"&]+)"', html)
+            if m and m.group(1) != video_id:
+                return m.group(1)
+            return None  # canonical points to self — no redirect available
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < 3:
+                wait = 2 * attempt
+                log.debug("%s: YTM redirect 429, retrying in %ds", video_id, wait)
+                time.sleep(wait)
+                continue
+            log.debug("YTM redirect lookup failed for %s (HTTP %d)", video_id, e.code)
+            return None
+        except Exception:
+            log.debug("YTM redirect lookup failed for %s", video_id, exc_info=True)
+            return None
+    return None
+
+
+def _download_redirected(
+    opts: dict,
+    alt_id: str,
+    original_id: str,
+    workdir: Path,
+    fmt: str,
+) -> tuple[Path, dict]:
+    """Download the redirected video and rename the output to the *original* ID.
+
+    The rest of the pipeline (state DB, tagging) keys on the original video_id
+    that appears in the playlist, so the file on disk must keep that name.
+    """
+    alt_url = f"https://music.youtube.com/watch?v={alt_id}"
+    # Override outtmpl so the file is saved under the *alternative* ID first
+    redirect_opts = {**opts, "outtmpl": str(workdir / "%(id)s.%(ext)s")}
+    try:
+        with YoutubeDL(redirect_opts) as ydl:
+            info = ydl.extract_info(alt_url, download=True)
+    except DownloadError as e:
+        raise DownloadFailure(classify_error(str(e)), str(e)) from e
+    reqs = info.get("requested_downloads") or []
+    path = Path(reqs[0]["filepath"]) if reqs else None
+    if not path or not path.exists():
+        found = sorted(workdir.glob(f"{alt_id}.*"))
+        path = found[0] if found else None
+    if not path or path.suffix != f".{fmt}":
+        raise DownloadFailure("other", f"unexpected output file after redirect: {path}")
+    # Rename to the original video_id so the pipeline stays consistent
+    dest = workdir / f"{original_id}{path.suffix}"
+    if path != dest:
+        path.rename(dest)
+    return dest, info

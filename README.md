@@ -112,6 +112,8 @@ A cookies file is a credential: keep it private (`chmod 600`), never commit it. 
 
 ## Layout and naming
 
+`-o` / `--output-dir` selects the root destination directory. `--layout` or `--template` selects the paths below it.
+
 Two presets, or your own template:
 
 | `--layout`          | Template                                             | Duplicates                                               |

@@ -75,6 +75,7 @@ uv run --extra dev pytest -q                  # Run all 165 unit/integration tes
 uv run ytmsync doctor                         # Inspect ffmpeg, JS runtimes, cookies, endpoints
 uv run ytmsync sync <SOURCE> -o <DIR> --dry-run # Preview downloads, copies, moves, and deletions
 uv run ruff check                             # Lint codebase
+uv run ruff format --check                    # Check Python formatting
 uv build                                      # Build sdist and wheel distributions via Hatchling
 ```
 
@@ -83,6 +84,7 @@ uv build                                      # Build sdist and wheel distributi
 | Tool           | Entry                                | Notes                                                                  |
 | -------------- | ------------------------------------ | ---------------------------------------------------------------------- |
 | Hatchling      | `pyproject.toml`                     | Build backend, package definition (`src/ytmsync`), dependencies        |
+| Ruff           | `pyproject.toml`                     | Python 3.11 target; lint and formatting configuration                  |
 | Runtime Config | `~/.config/ytmsync/config.toml`      | Defaults overridden by `$YTMSYNC_CONFIG` and CLI flags                 |
 | Sync DB        | `<library>/.ytmsync/state.db`        | SQLite WAL mode, foreign keys ON; tracks real paths and TrackMeta JSON |
 | HTTP Cache     | `~/.cache/ytmsync/http_cache.sqlite` | SQLite WAL cache for LRCLIB and MusicBrainz (30d hit / 1d miss)        |

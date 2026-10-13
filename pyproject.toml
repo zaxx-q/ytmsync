@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ytmsync"
-version = "0.2.1"
+version = "0.3"
 description = "Download and sync YouTube Music playlists using yt-dlp"
 readme = "README.md"
 license = "MIT"

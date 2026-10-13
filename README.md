@@ -59,7 +59,7 @@ uv tool install git+https://github.com/your-name/ytmsync.git
 ## Quick start
 
 ```bash
-ytmsync sync "https://music.youtube.com/playlist?list=PLxxxxxxxx" -L ~/Music/ytmsync   # first time: subscribes + downloads
+ytmsync sync "https://music.youtube.com/playlist?list=PLxxxxxxxx" -o ~/Music/ytmsync   # first time: subscribes + downloads
 ytmsync sync                                                                           # later: sync everything you subscribed to
 ytmsync sync --dry-run                                                                 # show what would change, touch nothing
 ```
@@ -92,7 +92,7 @@ Result:
 **`sync` options:** `--dry-run`, `--no-delete`, `--yes` (confirm large removals), `--allow-empty` (accept a playlist that is now really empty),
 `--refresh-lyrics`, `--refresh-tags` (re-fetch metadata/cover, keeps lyrics), `--retry-unavailable`, `--no-retry-failed`.
 
-**Options shared by most commands:** `-L/--library`, `-f/--format [opus|m4a|mp3]`, `--layout [library|playlist]`, `--template`, `-j/--threads`,
+**Options shared by most commands:** `-o/--output-dir`, `-f/--format [opus|m4a|mp3]`, `--layout [library|playlist]`, `--template`, `-j/--threads`,
 `--cookies FILE`, `--cookies-from-browser NAME[:PROFILE]`, `--js-runtime`, `--sleep SECONDS`, `--lyrics/--no-lyrics`, `--lrc/--no-lrc`,
 `--embed-lyrics/--no-embed-lyrics`, `--m3u/--no-m3u`, `--musicbrainz/--no-musicbrainz`, `--contact`. `-v`/`-vv` (before the command) increase logging.
 

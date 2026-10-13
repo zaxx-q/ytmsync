@@ -27,12 +27,12 @@ console = Console()
 def common_options(f):
     opts = [
         click.option(
-            "-L",
-            "--library",
+            "-o",
+            "--output-dir",
             "library_dir",
             type=click.Path(file_okay=False),
             default=None,
-            help="Music library folder.",
+            help="Root folder for downloaded music.",
         ),
         click.option(
             "-f",

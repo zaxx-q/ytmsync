@@ -67,7 +67,7 @@ def app(tmp_path, stub_opus, monkeypatch):
     monkeypatch.setattr(pipeline, "fetch_cover", lambda *a, **k: None)
     lib = tmp_path / "lib"
     def run(*args, **kw):
-        return CliRunner().invoke(cli, [*args, "-L", str(lib)] if args[0] not in ("config",) else list(args), catch_exceptions=False, **kw)
+        return CliRunner().invoke(cli, [*args, "-o", str(lib)] if args[0] not in ("config",) else list(args), catch_exceptions=False, **kw)
     run.lib, run.calls, run.lists = lib, calls, lists
     return run
 
@@ -79,7 +79,7 @@ def test_config_init_path_show(app, tmp_path):
     assert app("config", "path").output.strip().endswith("config.toml")
     assert app("config", "init").exit_code == 0 and (tmp_path / "cfg" / "config.toml").exists()
     assert app("config", "init").exit_code == 1                                                    # refuses to overwrite
-    out = app("config", "show", "-f", "m4a", "-L", str(tmp_path / "x")).output
+    out = app("config", "show", "-f", "m4a", "-o", str(tmp_path / "x")).output
     assert "format = 'm4a'" in out and "path_template = '{albumartist}/{album}/{track:02d} {title}'" in out
 
 def test_add_list_sync_remove_flow(app):
@@ -136,4 +136,4 @@ def test_cli_musicbrainz_flags(app, monkeypatch):
     r = app("sync", "PLaaaaaaaaaa", "--musicbrainz", "--contact", "me@example.com")
     assert r.exit_code == 0 and seen[0] == ("init", "me@example.com") and {x for x in seen if x[0] == "enrich"} == {("enrich", "v1"), ("enrich", "v2")}
     seen.clear(); app("sync", "PLaaaaaaaaaa"); assert seen == []                                 # not constructed unless enabled
-    assert "contact = 'me@example.com'" in app("config", "show", "-L", str(app.lib), "--musicbrainz", "--contact", "me@example.com").output
+    assert "contact = 'me@example.com'" in app("config", "show", "-o", str(app.lib), "--musicbrainz", "--contact", "me@example.com").output

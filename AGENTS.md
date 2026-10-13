@@ -73,7 +73,7 @@ ytmsync/
 ```bash
 uv run --extra dev pytest -q                  # Run all 165 unit/integration tests offline
 uv run ytmsync doctor                         # Inspect ffmpeg, JS runtimes, cookies, endpoints
-uv run ytmsync sync <SOURCE> -L <DIR> --dry-run # Preview downloads, copies, moves, and deletions
+uv run ytmsync sync <SOURCE> -o <DIR> --dry-run # Preview downloads, copies, moves, and deletions
 uv run ruff check                             # Lint codebase
 uv build                                      # Build sdist and wheel distributions via Hatchling
 ```

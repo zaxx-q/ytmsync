@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import shutil
@@ -362,3 +363,68 @@ def _download_redirected(
     if path != dest:
         path.rename(dest)
     return dest, info
+
+
+def fetch_unavailable_title_artist(
+    video_id: str,
+    s: Settings | None = None,
+    session: object | None = None,
+) -> tuple[str, str]:
+    """Fetch title and artist for an unavailable video ID via yt-dlp or YouTube oEmbed."""
+    # 1. Try yt-dlp first
+    if s:
+        try:
+            opts = {
+                **base_opts(s),
+                "extract_flat": True,
+                "skip_download": True,
+                "quiet": True,
+                "ignoreerrors": True,
+            }
+            with YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(
+                    f"https://www.youtube.com/watch?v={video_id}", download=False
+                )
+            if info:
+                title = info.get("title") or ""
+                artist = (
+                    info.get("artist")
+                    or ", ".join(info.get("artists") or [])
+                    or info.get("uploader")
+                    or info.get("channel")
+                    or ""
+                )
+                artist = re.sub(r"\s*-\s*Topic$", "", str(artist)).strip()
+                if title and not _UNAVAILABLE_TITLE.match(title):
+                    return title, artist
+        except Exception:
+            pass
+
+    # 2. Try YouTube oEmbed (works for region-locked / unplayable videos)
+    url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+    try:
+        if session and hasattr(session, "get"):
+            resp = session.get(url, timeout=5)
+            data = resp.json() if resp.status_code == 200 else {}
+        else:
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
+                    ),
+                    "Accept": "application/json",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=5) as r:
+                data = json.loads(r.read().decode("utf-8"))
+        title = data.get("title") or ""
+        author = re.sub(
+            r"\s*-\s*Topic$", "", str(data.get("author_name") or "")
+        ).strip()
+        if title and not _UNAVAILABLE_TITLE.match(title):
+            return title, author
+    except Exception:
+        pass
+
+    return "", ""

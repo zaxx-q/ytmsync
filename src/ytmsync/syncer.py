@@ -32,7 +32,14 @@ from .plan import FileRow, Plan, check_removals, make_plan, needs_move
 from .sources import Source
 from .state import Db
 from .tagging import existing_lyrics, write_lyrics_only, write_tags
-from .ytdl import EnumerationError, PlaylistEntry, PlaylistInfo, enumerate_playlist
+from .ytdl import (
+    _UNAVAILABLE_TITLE,
+    EnumerationError,
+    PlaylistEntry,
+    PlaylistInfo,
+    enumerate_playlist,
+    fetch_unavailable_title_artist,
+)
 
 log = logging.getLogger("ytmsync.sync")
 
@@ -108,11 +115,29 @@ class Syncer:
     def _resolve_track_info(
         self, vid: str, meta: TrackMeta | None = None
     ) -> tuple[str, str]:
-        if meta:
+        if meta and meta.video_id == vid:
             title = meta.title or ""
             artist = ", ".join(meta.artists) if meta.artists else ""
-            if title or artist:
+            if title and not _UNAVAILABLE_TITLE.match(title):
                 return title, artist
+        entry_title, entry_artist = self._entry_meta.get(vid, ("", ""))
+        if entry_title and not _UNAVAILABLE_TITLE.match(entry_title):
+            return entry_title, entry_artist
+        fetched_title, fetched_artist = fetch_unavailable_title_artist(
+            vid, self.s, getattr(self.ctx, "http", None)
+        )
+        if fetched_title and not _UNAVAILABLE_TITLE.match(fetched_title):
+            self.db.set_track_failed(
+                vid,
+                "unavailable",
+                "unavailable",
+                meta_json={
+                    "video_id": vid,
+                    "title": fetched_title,
+                    "artists": [fetched_artist] if fetched_artist else [],
+                },
+            )
+            return fetched_title, fetched_artist
         row = self.db.get_track(vid)
         if row and row["meta_json"]:
             try:
@@ -124,11 +149,11 @@ class Syncer:
                     if isinstance(artists, list)
                     else str(artists or "")
                 )
-                if title or artist:
+                if title and not _UNAVAILABLE_TITLE.match(title):
                     return title, artist
             except Exception:
                 pass
-        return self._entry_meta.get(vid, ("", ""))
+        return entry_title, entry_artist
 
     # ------------------------------------------------------------------ path helpers
     def _base_rel(self, meta: TrackMeta, scope: str, ext: str) -> str:

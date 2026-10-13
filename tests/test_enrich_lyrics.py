@@ -164,6 +164,23 @@ def test_enrich_single_and_ugc_title_cleaning():
 def test_enrich_survives_failures():
     assert YTMeta(lambda: FakeAPI(boom=True)).enrich("v") is None
     assert YTMeta(lambda: FakeAPI(watch={"tracks": []})).enrich("v") is None
+    # Ensures get_watch_playlist radio tracks never misattribute an unrelated first track
+    assert (
+        YTMeta(
+            lambda: FakeAPI(
+                watch={
+                    "tracks": [
+                        {
+                            "videoId": "unrelated",
+                            "title": "Radio Track",
+                            "artists": [{"name": "Radio Artist"}],
+                        }
+                    ]
+                }
+            )
+        ).enrich("target_vid")
+        is None
+    )
     m = YTMeta(
         lambda: FakeAPI(watch(album={"name": "Named", "id": "MPREb_1"}), album=None)
     ).enrich("vid00000001")  # album page fails

@@ -369,3 +369,24 @@ def test_contact_from_config_file(tmp_path, monkeypatch):
         load_settings({"library_dir": str(tmp_path), "musicbrainz": False}).musicbrainz
         is False
     )  # CLI wins over file
+
+
+def test_fetch_unavailable_title_artist_oembed(monkeypatch):
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {
+                "title": "Hide Away (Alan Walker Remix)",
+                "author_name": "Daya - Topic",
+            }
+
+    class FakeSession:
+        def get(self, url, timeout=5):
+            return FakeResponse()
+
+    title, artist = ytdl.fetch_unavailable_title_artist(
+        "FQzrs9OrRiY", session=FakeSession()
+    )
+    assert title == "Hide Away (Alan Walker Remix)"
+    assert artist == "Daya"

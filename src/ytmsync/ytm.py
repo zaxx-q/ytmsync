@@ -88,7 +88,7 @@ class YTMeta:
         tracks = wp.get("tracks") or []
         t = next(
             (x for x in tracks if x.get("videoId") == video_id),
-            tracks[0] if tracks else None,
+            None,
         )
         if not t:
             return None

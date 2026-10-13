@@ -1,10 +1,12 @@
 """Write tags to .opus / .m4a / .mp3 with mediafile (common fields) + mutagen (custom / timed frames)."""
+
 from __future__ import annotations
 
 import datetime as dt
 from pathlib import Path
 
-from mediafile import Image as MFImage, ImageType, MediaFile
+from mediafile import Image as MFImage
+from mediafile import ImageType, MediaFile
 from mutagen.id3 import ID3, SYLT, TXXX
 from mutagen.mp4 import MP4, MP4FreeForm
 from mutagen.oggopus import OggOpus
@@ -13,14 +15,22 @@ from .lyrics.lrc import format_lrc
 from .models import LyricsResult, TrackMeta
 
 VIDEO_ID_TAG = "YTM_VIDEO_ID"
-ARTIST_JOIN = " & "   # Picard convention: ARTIST = display string, ARTISTS = multi-value list
+ARTIST_JOIN = (
+    " & "  # Picard convention: ARTIST = display string, ARTISTS = multi-value list
+)
 
 
-def write_tags(path: Path, meta: TrackMeta, cover_jpeg: bytes | None, lyrics: LyricsResult | None,
-               artist_join: str = ARTIST_JOIN, embed_lyrics: bool = True) -> None:
+def write_tags(
+    path: Path,
+    meta: TrackMeta,
+    cover_jpeg: bytes | None,
+    lyrics: LyricsResult | None,
+    artist_join: str = ARTIST_JOIN,
+    embed_lyrics: bool = True,
+) -> None:
     ext = path.suffix.lower()
     mf = MediaFile(str(path))
-    mf.delete()                                   # start clean: drop yt-dlp/ffmpeg leftovers
+    mf.delete()  # start clean: drop yt-dlp/ffmpeg leftovers
     mf.title = meta.title
     mf.artist = artist_join.join(meta.artists)
     mf.artists = list(meta.artists)
@@ -61,9 +71,13 @@ def write_tags(path: Path, meta: TrackMeta, cover_jpeg: bytes | None, lyrics: Ly
     # ---- things mediafile has no field for --------------------------------------------------
     vid = meta.video_id
     if ext == ".m4a":
-        t = MP4(str(path)); t[f"----:com.apple.iTunes:{VIDEO_ID_TAG}"] = [MP4FreeForm(vid.encode())]; t.save()
+        t = MP4(str(path))
+        t[f"----:com.apple.iTunes:{VIDEO_ID_TAG}"] = [MP4FreeForm(vid.encode())]
+        t.save()
     elif ext == ".opus":
-        t = OggOpus(str(path)); t[VIDEO_ID_TAG] = [vid]; t.save()
+        t = OggOpus(str(path))
+        t[VIDEO_ID_TAG] = [vid]
+        t.save()
     elif ext == ".mp3":
         t = ID3(str(path))
         t.add(TXXX(encoding=3, desc=VIDEO_ID_TAG, text=[vid]))
@@ -92,9 +106,13 @@ def _set_lyrics_field(mf: MediaFile, ext: str, lyrics: LyricsResult | None) -> N
     if not lyrics or lyrics.instrumental:
         mf.lyrics = None
     elif ext == ".mp3":
-        mf.lyrics = lyrics.plain                       # USLT must stay human-readable; timed data goes in SYLT
+        mf.lyrics = (
+            lyrics.plain
+        )  # USLT must stay human-readable; timed data goes in SYLT
     elif lyrics.kind == "synced":
-        mf.lyrics = format_lrc(lyrics.lines)           # LRC text in \u00a9lyr / LYRICS: most players parse it
+        mf.lyrics = format_lrc(
+            lyrics.lines
+        )  # LRC text in \u00a9lyr / LYRICS: most players parse it
     else:
         mf.lyrics = lyrics.plain
 
@@ -102,8 +120,16 @@ def _set_lyrics_field(mf: MediaFile, ext: str, lyrics: LyricsResult | None) -> N
 def _set_sylt(t: ID3, lyrics: LyricsResult | None) -> None:
     t.delall("SYLT")
     if lyrics and lyrics.kind == "synced" and not lyrics.instrumental:
-        t.add(SYLT(encoding=3, lang="eng", format=2, type=1, desc="",   # format 2 = milliseconds, type 1 = lyrics
-                   text=[(l.text, l.start_ms) for l in lyrics.lines]))
+        t.add(
+            SYLT(
+                encoding=3,
+                lang="eng",
+                format=2,
+                type=1,
+                desc="",  # format 2 = milliseconds, type 1 = lyrics
+                text=[(l.text, l.start_ms) for l in lyrics.lines],
+            )
+        )
 
 
 def write_lyrics_only(path: Path, lyrics: LyricsResult | None) -> None:
@@ -113,7 +139,9 @@ def write_lyrics_only(path: Path, lyrics: LyricsResult | None) -> None:
     _set_lyrics_field(mf, ext, lyrics)
     mf.save()
     if ext == ".mp3":
-        t = ID3(str(path)); _set_sylt(t, lyrics); t.save(v2_version=4)
+        t = ID3(str(path))
+        _set_sylt(t, lyrics)
+        t.save(v2_version=4)
 
 
 def existing_lyrics(path: Path) -> LyricsResult | None:
@@ -121,7 +149,11 @@ def existing_lyrics(path: Path) -> LyricsResult | None:
     from .lyrics.lrc import parse_lrc, to_plain
 
     side = path.with_suffix(".lrc")
-    text = side.read_text("utf-8") if side.exists() else (MediaFile(str(path)).lyrics or "")
+    text = (
+        side.read_text("utf-8")
+        if side.exists()
+        else (MediaFile(str(path)).lyrics or "")
+    )
     if not text.strip():
         return None
     lines, _ = parse_lrc(text)

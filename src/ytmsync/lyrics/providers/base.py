@@ -11,9 +11,11 @@ from ...ytm import YTMeta
 @dataclass
 class LyricsContext:
     ytm: YTMeta
-    http: object            # requests.Session-like (needs .get)
+    http: object  # requests.Session-like (needs .get)
     cache: HttpCache
-    info: dict | None = None  # yt-dlp info dict of the downloaded track (used by the optional `ytcaptions` provider)
+    info: dict | None = (
+        None  # yt-dlp info dict of the downloaded track (used by the optional `ytcaptions` provider)
+    )
 
 
 class Provider(Protocol):

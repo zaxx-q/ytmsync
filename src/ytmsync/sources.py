@@ -4,13 +4,15 @@ import re
 from dataclasses import dataclass
 from urllib.parse import parse_qs, urlparse
 
-_PL_ID = re.compile(r"^(?:PL|OLAK5uy_|RDCLAK|RDAMPL|UU|FL|LL|OL)[A-Za-z0-9_-]{8,}$|^LM$|^VL.+$")
+_PL_ID = re.compile(
+    r"^(?:PL|OLAK5uy_|RDCLAK|RDAMPL|UU|FL|LL|OL)[A-Za-z0-9_-]{8,}$|^LM$|^VL.+$"
+)
 _VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 
 @dataclass(frozen=True)
 class Source:
-    kind: str   # "playlist" | "video" | "album_browse"
+    kind: str  # "playlist" | "video" | "album_browse"
     id: str
 
     @property
@@ -32,9 +34,11 @@ def parse_source(arg: str) -> Source:
     if not u.netloc.endswith(("youtube.com", "youtu.be")):
         raise ValueError(f"Not a YouTube / YouTube Music URL or playlist id: {arg!r}")
     q = parse_qs(u.query)
-    if "list" in q:                       # playlist wins even on watch?v=..&list=..
+    if "list" in q:  # playlist wins even on watch?v=..&list=..
         return Source("playlist", q["list"][0])
-    if u.path.startswith("/browse/MPRE"):  # album page -> resolved to playlist via ytmusicapi.get_album
+    if u.path.startswith(
+        "/browse/MPRE"
+    ):  # album page -> resolved to playlist via ytmusicapi.get_album
         return Source("album_browse", u.path.rsplit("/", 1)[-1])
     if "v" in q and _VIDEO_ID.match(q["v"][0]):
         return Source("video", q["v"][0])

@@ -113,7 +113,7 @@ def detect_js_runtimes() -> dict[str, dict]:
             if info and info.supported:
                 out[name] = {}
         return out
-    except Exception:  # private module moved -> plain PATH lookup
+    except Exception:  # noqa: BLE001 -- private module moved -> plain PATH lookup
         return {n: {} for n in ("deno", "node", "bun", "quickjs") if shutil.which(n)}
 
 

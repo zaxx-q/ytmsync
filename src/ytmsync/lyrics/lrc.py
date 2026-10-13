@@ -1,4 +1,5 @@
 """LRC parsing / formatting. Line-level only (word-level tags are stripped)."""
+
 from __future__ import annotations
 
 import re
@@ -13,7 +14,9 @@ class LyricLine:
 
 # [mm:ss.xx]  [mm:ss.xxx]  [mm:ss]  [mm:ss:xx]  (minutes may exceed 59)
 _TS = re.compile(r"\[(\d+):(\d{1,2})(?:[.:](\d{1,3}))?\]")
-_META = re.compile(r"^\[([A-Za-z#]+):(.*)\]\s*$")  # [ar:Artist]; digits-only keys never match
+_META = re.compile(
+    r"^\[([A-Za-z#]+):(.*)\]\s*$"
+)  # [ar:Artist]; digits-only keys never match
 _WORD_TS = re.compile(r"<\d+:\d{1,2}(?:[.:]\d{1,3})?>")  # enhanced-LRC <mm:ss.xx>
 _BG = re.compile(r"\[bg:(.*?)\]\s*$")  # better-lyrics' background-vocal extension
 
@@ -39,9 +42,16 @@ def parse_lrc(text: str) -> tuple[list[LyricLine], dict[str, str]]:
                 meta[m.group(1).lower()] = m.group(2).strip()
             continue  # untimed text line: ignore
         # timestamps are all at the start: "[00:10.00][01:30.00]chorus"
-        body = raw[stamps[-1].end():]
+        body = raw[stamps[-1].end() :]
         body = _WORD_TS.sub("", body)
-        body = _BG.sub(lambda m: f" ({m.group(1).strip().strip('()').strip()})" if m.group(1).strip().strip('()').strip() else "", body)
+        body = _BG.sub(
+            lambda m: (
+                f" ({m.group(1).strip().strip('()').strip()})"
+                if m.group(1).strip().strip("()").strip()
+                else ""
+            ),
+            body,
+        )
         body = re.sub(r"\s{2,}", " ", body).strip()
         for s in stamps:
             lines.append(LyricLine(_to_ms(*s.groups()), body))

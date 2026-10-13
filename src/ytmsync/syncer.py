@@ -1,5 +1,6 @@
 """Sync orchestration. Rules: workers only build files in a temp dir; THIS module (main thread) is the only writer of
 the library and of tracks/files/memberships rows."""
+
 from __future__ import annotations
 
 import json
@@ -12,7 +13,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from rich.console import Console
-from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 from .config import Settings
 from .lyrics.chain import RANK, fetch_lyrics, lyrics_kind
@@ -40,7 +47,7 @@ class SyncOptions:
     refresh_tags: bool = False
     retry_unavailable: bool = False
     retry_failed: bool = True
-    pin: bool = False            # `download`: pin files + do not subscribe
+    pin: bool = False  # `download`: pin files + do not subscribe
 
 
 @dataclass
@@ -66,19 +73,31 @@ def prune_empty_dirs(start: Path, stop: Path) -> None:
     d = start
     while d != stop and stop in d.parents:
         try:
-            d.rmdir()                       # only succeeds when empty
+            d.rmdir()  # only succeeds when empty
         except OSError:
             break
         d = d.parent
 
 
 class Syncer:
-    def __init__(self, s: Settings, db: Db, ctx: Ctx, *, console: Console | None = None,
-                 enumerate_fn: Callable = enumerate_playlist, process_fn: Callable = process_track,
-                 lyrics_fn: Callable = fetch_lyrics):
+    def __init__(
+        self,
+        s: Settings,
+        db: Db,
+        ctx: Ctx,
+        *,
+        console: Console | None = None,
+        enumerate_fn: Callable = enumerate_playlist,
+        process_fn: Callable = process_track,
+        lyrics_fn: Callable = fetch_lyrics,
+    ):
         self.s, self.db, self.ctx = s, db, ctx
         self.console = console or Console()
-        self.enumerate_fn, self.process_fn, self.lyrics_fn = enumerate_fn, process_fn, lyrics_fn
+        self.enumerate_fn, self.process_fn, self.lyrics_fn = (
+            enumerate_fn,
+            process_fn,
+            lyrics_fn,
+        )
         self.lib = s.library_dir
         self.scoped = is_playlist_scoped(s.path_template)
         self._titles: dict[str, str] = {}
@@ -88,10 +107,22 @@ class Syncer:
     def _base_rel(self, meta: TrackMeta, scope: str, ext: str) -> str:
         artists = meta.artists or ["Unknown Artist"]
         aa = meta.album_artists or artists
-        v = dict(artist=artists[0], artists=", ".join(artists), albumartist=aa[0], album=meta.album or "Unknown Album",
-                 title=meta.title, track=meta.track_no or 0, tracktotal=meta.track_total or 0, disc=meta.disc_no or 0,
-                 disctotal=meta.disc_total or 0, year=meta.year or 0, video_id=meta.video_id,
-                 playlist=self._titles.get(scope, "Singles"), playlist_index=self._pos.get((scope, meta.video_id), 0), playlist_id=scope)
+        v = {
+            "artist": artists[0],
+            "artists": ", ".join(artists),
+            "albumartist": aa[0],
+            "album": meta.album or "Unknown Album",
+            "title": meta.title,
+            "track": meta.track_no or 0,
+            "tracktotal": meta.track_total or 0,
+            "disc": meta.disc_no or 0,
+            "disctotal": meta.disc_total or 0,
+            "year": meta.year or 0,
+            "video_id": meta.video_id,
+            "playlist": self._titles.get(scope, "Singles"),
+            "playlist_index": self._pos.get((scope, meta.video_id), 0),
+            "playlist_id": scope,
+        }
         return render_path(self.s.path_template, v, ext)
 
     def _resolve(self, rel: str, vid: str, scope: str) -> str:
@@ -105,27 +136,39 @@ class Syncer:
 
     def _meta(self, vid: str) -> TrackMeta | None:
         row = self.db.get_track(vid)
-        return TrackMeta.from_json(json.loads(row["meta_json"])) if row and row["meta_json"] else None
+        return (
+            TrackMeta.from_json(json.loads(row["meta_json"]))
+            if row and row["meta_json"]
+            else None
+        )
 
     # ------------------------------------------------------------------ enumeration + safety rails
-    def _enumerate(self, sources: list[Source], opts: SyncOptions, rep: Report) -> dict[str, PlaylistInfo]:
+    def _enumerate(
+        self, sources: list[Source], opts: SyncOptions, rep: Report
+    ) -> dict[str, PlaylistInfo]:
         infos: dict[str, PlaylistInfo] = {}
         old = self.db.members_all(subscribed_only=False)
         for src in sources:
             try:
                 if src.kind == "video":
-                    info = PlaylistInfo("singles", "Singles", [PlaylistEntry(src.id, "", 1)])
+                    info = PlaylistInfo(
+                        "singles", "Singles", [PlaylistEntry(src.id, "", 1)]
+                    )
                 else:
                     info = self.enumerate_fn(self.s, src)
             except EnumerationError as e:
                 rep.playlist_errors[src.id] = str(e)
                 continue
             if src.kind == "playlist" and opts.delete:
-                msg = check_removals({v for _, v in old.get(info.playlist_id, [])}, {e.video_id for e in info.entries},
-                                     allow_empty=opts.allow_empty, yes=opts.yes)
+                msg = check_removals(
+                    {v for _, v in old.get(info.playlist_id, [])},
+                    {e.video_id for e in info.entries},
+                    allow_empty=opts.allow_empty,
+                    yes=opts.yes,
+                )
                 if msg:
                     rep.playlist_errors[info.playlist_id] = msg
-                    continue                       # keep the old membership => nothing gets deleted because of this playlist
+                    continue  # keep the old membership => nothing gets deleted because of this playlist
             infos[info.playlist_id] = info
         return infos
 
@@ -133,25 +176,48 @@ class Syncer:
     def run(self, sources: list[Source], opts: SyncOptions) -> Report:
         s, db, rep = self.s, self.db, Report()
         s.tmp_dir.mkdir(parents=True, exist_ok=True)
-        for stale in s.tmp_dir.iterdir():                    # leftovers of an interrupted run
+        for stale in s.tmp_dir.iterdir():  # leftovers of an interrupted run
             shutil.rmtree(stale, ignore_errors=True)
 
         infos = self._enumerate(sources, opts, rep)
-        fresh = {pid: [(e.position, e.video_id) for e in i.entries] for pid, i in infos.items()}
-        merged = {**db.members_all(), **fresh}               # DB memberships overlaid with this run's fresh ones
-        self._titles = {**{r["playlist_id"]: r["title"] for r in db.playlists(False)}, **{p: i.title for p, i in infos.items()}}
+        fresh = {
+            pid: [(e.position, e.video_id) for e in i.entries]
+            for pid, i in infos.items()
+        }
+        merged = {
+            **db.members_all(),
+            **fresh,
+        }  # DB memberships overlaid with this run's fresh ones
+        self._titles = {
+            **{r["playlist_id"]: r["title"] for r in db.playlists(False)},
+            **{p: i.title for p, i in infos.items()},
+        }
         self._pos = {}
         for pid, items in merged.items():
             for pos, vid in items:
-                self._pos.setdefault((pid, vid), pos)        # first position wins for {playlist_index}
-        unavailable_now = frozenset(e.video_id for i in infos.values() for e in i.entries if not e.available)
+                self._pos.setdefault(
+                    (pid, vid), pos
+                )  # first position wins for {playlist_index}
+        unavailable_now = frozenset(
+            e.video_id for i in infos.values() for e in i.entries if not e.available
+        )
 
-        plan = make_plan(merged, db.files_all(), db.track_status_all(), self.scoped,
-                         lambda rel: (self.lib / rel).exists(), unavailable_now=unavailable_now,
-                         retry_failed=opts.retry_failed, retry_unavailable=opts.retry_unavailable, delete=opts.delete)
+        plan = make_plan(
+            merged,
+            db.files_all(),
+            db.track_status_all(),
+            self.scoped,
+            lambda rel: (self.lib / rel).exists(),
+            unavailable_now=unavailable_now,
+            retry_failed=opts.retry_failed,
+            retry_unavailable=opts.retry_unavailable,
+            delete=opts.delete,
+        )
         rep.plan = plan
         rep.unavailable = list(plan.skipped_unavailable)
-        rep.planned_moves = self._plan_moves(db.files_all(), {d[:2] for d in plan.delete})
+        rep.planned_moves = self._plan_moves(
+            db.files_all(), {d[:2] for d in plan.delete}
+        )
 
         if opts.dry_run:
             return rep
@@ -159,11 +225,18 @@ class Syncer:
         try:
             # ---- apply -------------------------------------------------------------------------------------
             for pid, info in infos.items():
-                db.upsert_playlist(pid, info.title, Source("playlist", pid).url, subscribed=not opts.pin)
+                db.upsert_playlist(
+                    pid,
+                    info.title,
+                    Source("playlist", pid).url,
+                    subscribed=not opts.pin,
+                )
                 db.replace_memberships(pid, fresh[pid])
             for vid in unavailable_now:
                 if db.track_status_all().get(vid) != "ok":
-                    db.set_track_failed(vid, "unavailable", "listed as private/deleted in the playlist")
+                    db.set_track_failed(
+                        vid, "unavailable", "listed as private/deleted in the playlist"
+                    )
 
             for vid, scope, rel in plan.delete:
                 self._remove_file(vid, scope, rel)
@@ -183,7 +256,9 @@ class Syncer:
             if s.m3u:
                 self._write_playlists(merged)
         finally:
-            shutil.rmtree(s.tmp_dir, ignore_errors=True)      # also on Ctrl-C: no half-built files linger
+            shutil.rmtree(
+                s.tmp_dir, ignore_errors=True
+            )  # also on Ctrl-C: no half-built files linger
         return rep
 
     # ------------------------------------------------------------------ file operations
@@ -197,7 +272,9 @@ class Syncer:
         prune_empty_dirs(p.parent, self.lib)
         self.db.delete_file_row(vid, scope)
 
-    def _plan_moves(self, files: dict[tuple[str, str], FileRow], skip: set[tuple[str, str]]) -> list[tuple[str, str, str, str]]:
+    def _plan_moves(
+        self, files: dict[tuple[str, str], FileRow], skip: set[tuple[str, str]]
+    ) -> list[tuple[str, str, str, str]]:
         out = []
         for (vid, scope), f in sorted(files.items()):
             if (vid, scope) in skip or not self._abs(f.path).exists():
@@ -218,7 +295,9 @@ class Syncer:
             os.replace(src.with_suffix(".lrc"), dst.with_suffix(".lrc"))
         prune_empty_dirs(src.parent, self.lib)
         f = self.db.files_all()[(vid, scope)]
-        self.db.upsert_file(vid, scope, new_rel, dst.suffix.lstrip("."), dst.stat().st_size, f.pinned)
+        self.db.upsert_file(
+            vid, scope, new_rel, dst.suffix.lstrip("."), dst.stat().st_size, f.pinned
+        )
 
     def _copy(self, vid: str, scope: str, donor_scope: str) -> bool:
         files = self.db.files_all()
@@ -226,13 +305,17 @@ class Syncer:
         if not donor or not meta:
             return False
         src = self._abs(donor.path)
-        rel = self._resolve(self._base_rel(meta, scope, src.suffix.lstrip(".")), vid, scope)
+        rel = self._resolve(
+            self._base_rel(meta, scope, src.suffix.lstrip(".")), vid, scope
+        )
         dst = self._abs(rel)
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
         if src.with_suffix(".lrc").exists():
             shutil.copy2(src.with_suffix(".lrc"), dst.with_suffix(".lrc"))
-        self.db.upsert_file(vid, scope, rel, dst.suffix.lstrip("."), dst.stat().st_size, donor.pinned)
+        self.db.upsert_file(
+            vid, scope, rel, dst.suffix.lstrip("."), dst.stat().st_size, donor.pinned
+        )
         return True
 
     # ------------------------------------------------------------------ downloads
@@ -240,13 +323,25 @@ class Syncer:
         done: set[str] = set()
         if not plan.download:
             return done
-        with Progress(TextColumn("{task.description}"), BarColumn(), MofNCompleteColumn(), TimeElapsedColumn(),
-                      console=self.console, transient=True) as prog, ThreadPoolExecutor(self.s.threads) as pool:
+        with (
+            Progress(
+                TextColumn("{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TimeElapsedColumn(),
+                console=self.console,
+                transient=True,
+            ) as prog,
+            ThreadPoolExecutor(self.s.threads) as pool,
+        ):
             task = prog.add_task("Downloading", total=len(plan.download))
-            futs = {pool.submit(self.process_fn, vid, self.ctx): vid for vid in plan.download}
+            futs = {
+                pool.submit(self.process_fn, vid, self.ctx): vid
+                for vid in plan.download
+            }
             try:
                 for fut in as_completed(futs):
-                    res: JobResult = fut.result()          # process_fn never raises
+                    res: JobResult = fut.result()  # process_fn never raises
                     self._finalize(res, plan.scopes[res.video_id], opts, rep)
                     done.add(res.video_id)
                     prog.advance(task)
@@ -255,7 +350,9 @@ class Syncer:
                 raise
         return done
 
-    def _finalize(self, res: JobResult, scopes: list[str], opts: SyncOptions, rep: Report) -> None:
+    def _finalize(
+        self, res: JobResult, scopes: list[str], opts: SyncOptions, rep: Report
+    ) -> None:
         """Main thread only: move the finished file(s) into the library and record them."""
         if not res.ok:
             self.db.set_track_failed(res.video_id, res.status, res.error or "")
@@ -274,16 +371,29 @@ class Syncer:
             last = i == len(scopes) - 1
             (os.replace if last else shutil.copy2)(audio, dst)
             if res.sidecar:
-                (os.replace if last else shutil.copy2)(res.sidecar, dst.with_suffix(".lrc"))
-            self.db.upsert_file(res.video_id, scope, rel, ext, dst.stat().st_size, opts.pin)
+                (os.replace if last else shutil.copy2)(
+                    res.sidecar, dst.with_suffix(".lrc")
+                )
+            self.db.upsert_file(
+                res.video_id, scope, rel, ext, dst.stat().st_size, opts.pin
+            )
         kind = lyrics_kind(res.lyrics) if self.s.lyrics else None
-        self.db.set_track_ok(res.video_id, meta.to_json(), kind, res.lyrics.source if res.lyrics else None)
+        self.db.set_track_ok(
+            res.video_id,
+            meta.to_json(),
+            kind,
+            res.lyrics.source if res.lyrics else None,
+        )
         shutil.rmtree(audio.parent, ignore_errors=True)
         rep.added += 1
 
     # ------------------------------------------------------------------ lyrics pass (upgrade plain/none -> synced later)
     def _files_of(self, vid: str) -> list[tuple[str, Path]]:
-        return [(sc, self._abs(f.path)) for (v, sc), f in self.db.files_all().items() if v == vid and self._abs(f.path).exists()]
+        return [
+            (sc, self._abs(f.path))
+            for (v, sc), f in self.db.files_all().items()
+            if v == vid and self._abs(f.path).exists()
+        ]
 
     def _apply_lyrics(self, vid: str, meta: TrackMeta, res: LyricsResult) -> None:
         for _, path in self._files_of(vid):
@@ -295,28 +405,53 @@ class Syncer:
                 side.unlink(missing_ok=True)
 
     def _lyrics_pass(self, opts: SyncOptions, rep: Report, skip: set[str]) -> None:
-        rows = [r for r in self.db.tracks_needing_lyrics(self.s.lyrics_retry_days, opts.refresh_lyrics) if r["video_id"] not in skip]
+        rows = [
+            r
+            for r in self.db.tracks_needing_lyrics(
+                self.s.lyrics_retry_days, opts.refresh_lyrics
+            )
+            if r["video_id"] not in skip
+        ]
         if not rows:
             return
+
         def work(row):
             meta = TrackMeta.from_json(json.loads(row["meta_json"]))
-            return row, meta, self.lyrics_fn(meta, self.ctx.lyrics_ctx(), self.s.lyrics_providers)
+            return (
+                row,
+                meta,
+                self.lyrics_fn(meta, self.ctx.lyrics_ctx(), self.s.lyrics_providers),
+            )
+
         with ThreadPoolExecutor(self.s.threads) as pool:
             for fut in [pool.submit(work, r) for r in rows]:
                 try:
                     row, meta, res = fut.result()
-                except Exception as e:
-                    log.debug("lyrics pass error: %s", e); continue
+                except Exception as e:  # noqa: BLE001 -- one lyrics task must not abort the pass
+                    log.debug("lyrics pass error: %s", e)
+                    continue
                 old = row["lyrics_kind"] or "none"
                 new_rank = 0 if res is None or res.instrumental else RANK[res.kind]
-                if res is not None and (new_rank > RANK.get(old, 0) or opts.refresh_lyrics or res.instrumental):
+                if res is not None and (
+                    new_rank > RANK.get(old, 0)
+                    or opts.refresh_lyrics
+                    or res.instrumental
+                ):
                     self._apply_lyrics(row["video_id"], meta, res)
                     rep.lyrics_upgraded += int(new_rank > RANK.get(old, 0))
-                kind = lyrics_kind(res) if (res is not None or old not in ("synced", "plain")) else old      # never forget lyrics we have
-                self.db.set_lyrics_state(row["video_id"], kind, res.source if res else row["lyrics_source"])
+                kind = (
+                    lyrics_kind(res)
+                    if (res is not None or old not in ("synced", "plain"))
+                    else old
+                )  # never forget lyrics we have
+                self.db.set_lyrics_state(
+                    row["video_id"], kind, res.source if res else row["lyrics_source"]
+                )
 
     def lyrics_only(self, opts: SyncOptions) -> Report:
-        rep = Report(); self._lyrics_pass(opts, rep, skip=set()); return rep
+        rep = Report()
+        self._lyrics_pass(opts, rep, skip=set())
+        return rep
 
     # ------------------------------------------------------------------ refresh tags (re-enrich metadata + cover, keep lyrics)
     def _refresh_tags(self, rep: Report) -> None:
@@ -329,10 +464,18 @@ class Syncer:
                 new = self.ctx.mb.enrich(new)
             cover = fetch_cover(new, None, self.s, self.ctx.http)
             for _, path in self._files_of(vid):
-                lyr = (self.lyrics_fn(new, self.ctx.lyrics_ctx(), self.s.lyrics_providers) if self.s.lyrics else None) or existing_lyrics(path)
-                write_tags(path, new, cover, lyr, self.s.artist_join, self.s.embed_lyrics)
+                lyr = (
+                    self.lyrics_fn(new, self.ctx.lyrics_ctx(), self.s.lyrics_providers)
+                    if self.s.lyrics
+                    else None
+                ) or existing_lyrics(path)
+                write_tags(
+                    path, new, cover, lyr, self.s.artist_join, self.s.embed_lyrics
+                )
             row = self.db.get_track(vid)
-            self.db.set_track_ok(vid, new.to_json(), row["lyrics_kind"], row["lyrics_source"])
+            self.db.set_track_ok(
+                vid, new.to_json(), row["lyrics_kind"], row["lyrics_source"]
+            )
             rep.retagged += 1
 
     # ------------------------------------------------------------------ playlists on disk
@@ -344,13 +487,26 @@ class Syncer:
                 f = files.get((vid, pid if self.scoped else ""))
                 meta = self._meta(vid)
                 if f and meta and self._abs(f.path).exists():
-                    entries.append((f.path, f"{', '.join(meta.artists)} - {meta.title}", int(meta.duration_s) if meta.duration_s else None))
+                    entries.append(
+                        (
+                            f.path,
+                            f"{', '.join(meta.artists)} - {meta.title}",
+                            int(meta.duration_s) if meta.duration_s else None,
+                        )
+                    )
             write_m3u(self.lib, self._titles.get(pid, pid), entries, taken, pid)
 
     def prune(self) -> Report:
         """Delete every file no subscribed playlist references (used by `remove --delete-files`)."""
         rep = Report()
-        plan = make_plan(self.db.members_all(), self.db.files_all(), {}, self.scoped, lambda rel: True)
+        plan = make_plan(
+            self.db.members_all(),
+            self.db.files_all(),
+            {},
+            self.scoped,
+            lambda rel: True,
+        )
         for vid, scope, rel in plan.delete:
-            self._remove_file(vid, scope, rel); rep.removed += 1
+            self._remove_file(vid, scope, rel)
+            rep.removed += 1
         return rep

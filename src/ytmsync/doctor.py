@@ -47,7 +47,7 @@ def ytdlp_age_days(version: str, today: dt.date | None = None) -> int | None:
 def check_ytdlp() -> Check:
     try:
         from yt_dlp.version import __version__ as v
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- a broken third-party import must not crash doctor
         return Check("yt-dlp", "fail", f"not importable: {e}", "pip install -U yt-dlp")
     age = ytdlp_age_days(v)
     if age is not None and age > 45:
@@ -61,7 +61,9 @@ def check_ytdlp() -> Check:
 
 
 def _run(cmd: list[str]) -> str:
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=20).stdout
+    return subprocess.run(
+        cmd, check=False, capture_output=True, text=True, timeout=20
+    ).stdout
 
 
 def check_ffmpeg(s: Settings) -> list[Check]:

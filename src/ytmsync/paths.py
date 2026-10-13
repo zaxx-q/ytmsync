@@ -1,4 +1,5 @@
 """Filename sanitising + template rendering (ideas: SpotDL formatter.py, Shira util)."""
+
 from __future__ import annotations
 
 import re
@@ -6,12 +7,33 @@ import string
 from pathlib import PurePosixPath
 
 _FORBIDDEN = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
-_WIN_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
-MAX_COMPONENT_BYTES = 180  # ext + " [videoid]" suffix headroom under the common 255-byte limit
+_WIN_RESERVED = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+MAX_COMPONENT_BYTES = (
+    180  # ext + " [videoid]" suffix headroom under the common 255-byte limit
+)
 
 PLAYLIST_VARS = {"playlist", "playlist_index", "playlist_id"}
-ALL_VARS = {"artist", "artists", "albumartist", "album", "title", "track", "tracktotal", "disc",
-            "disctotal", "year", "video_id", *PLAYLIST_VARS}
+ALL_VARS = {
+    "artist",
+    "artists",
+    "albumartist",
+    "album",
+    "title",
+    "track",
+    "tracktotal",
+    "disc",
+    "disctotal",
+    "year",
+    "video_id",
+    *PLAYLIST_VARS,
+}
 
 PRESETS = {
     "library": "{albumartist}/{album}/{track:02d} {title}",
@@ -20,12 +42,18 @@ PRESETS = {
 
 
 def sanitize_component(s: str, max_bytes: int = MAX_COMPONENT_BYTES) -> str:
-    s = s.replace(":", " -").replace('"', "'").replace("/", "_").replace("\\", "_")  # AC/DC -> AC_DC
+    s = (
+        s.replace(":", " -").replace('"', "'").replace("/", "_").replace("\\", "_")
+    )  # AC/DC -> AC_DC
     s = _FORBIDDEN.sub("", s)
-    s = re.sub(r"\s+", " ", s).strip().rstrip(". ")  # Windows dislikes trailing dots/spaces
+    s = (
+        re.sub(r"\s+", " ", s).strip().rstrip(". ")
+    )  # Windows dislikes trailing dots/spaces
     b = s.encode("utf-8")
     if len(b) > max_bytes:
-        s = b[:max_bytes].decode("utf-8", errors="ignore").rstrip(". ")  # never cut mid-character
+        s = (
+            b[:max_bytes].decode("utf-8", errors="ignore").rstrip(". ")
+        )  # never cut mid-character
     if not s:
         return "_"
     if s.split(".")[0].upper() in _WIN_RESERVED:
@@ -40,9 +68,15 @@ def template_vars(template: str) -> set[str]:
 def validate_template(template: str) -> None:
     unknown = template_vars(template) - ALL_VARS
     if unknown:
-        raise ValueError(f"Unknown template variable(s): {', '.join(sorted(unknown))}. Allowed: {', '.join(sorted(ALL_VARS))}")
-    if "title" not in template_vars(template) and "video_id" not in template_vars(template):
-        raise ValueError("Template must contain {title} or {video_id} so files stay distinguishable")
+        raise ValueError(
+            f"Unknown template variable(s): {', '.join(sorted(unknown))}. Allowed: {', '.join(sorted(ALL_VARS))}"
+        )
+    if "title" not in template_vars(template) and "video_id" not in template_vars(
+        template
+    ):
+        raise ValueError(
+            "Template must contain {title} or {video_id} so files stay distinguishable"
+        )
 
 
 def is_playlist_scoped(template: str) -> bool:
@@ -66,7 +100,9 @@ def render_path(template: str, values: dict, ext: str) -> str:
             safe[k] = 0
         safe.setdefault(k, 0)
     rendered = template.format_map(_Default(safe))
-    parts = [sanitize_component(p) for p in rendered.split("/") if p not in ("", ".", "..")]
+    parts = [
+        sanitize_component(p) for p in rendered.split("/") if p not in ("", ".", "..")
+    ]
     if not parts:
         parts = ["_"]
     leaf = parts[-1]
@@ -75,7 +111,9 @@ def render_path(template: str, values: dict, ext: str) -> str:
 
 
 class _Default(dict):
-    def __missing__(self, key):  # unknown/absent var -> "Unknown" instead of KeyError at runtime
+    def __missing__(
+        self, key
+    ):  # unknown/absent var -> "Unknown" instead of KeyError at runtime
         return "Unknown"
 
 

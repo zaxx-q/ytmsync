@@ -7,6 +7,7 @@ from .base import LyricsContext
 
 class YtMusicProvider:
     """YouTube Music's own lyrics (LyricFind/Musixmatch). Timed when available. Also serves as the validation reference."""
+
     name = "ytmusic"
 
     def fetch(self, meta: TrackMeta, ctx: LyricsContext) -> LyricsResult | None:
@@ -16,7 +17,10 @@ class YtMusicProvider:
         if not r or not r.get("lyrics"):
             return None
         if r.get("hasTimestamps"):
-            lines = [LyricLine(int(l.start_time), (l.text or "").strip()) for l in r["lyrics"]]
+            lines = [
+                LyricLine(int(l.start_time), (l.text or "").strip())
+                for l in r["lyrics"]
+            ]
             if any(l.text for l in lines):
                 return LyricsResult("synced", self.name, lines, to_plain(lines))
             return None

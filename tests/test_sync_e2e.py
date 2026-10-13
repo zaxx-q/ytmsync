@@ -441,12 +441,17 @@ def test_interrupted_run_leaves_no_partial_files(env, monkeypatch):
 def test_musicbrainz_enrichment_in_new_downloads(env):
     env.new_syncer(mb=True)
     seed(env, "a", "b")
-    env.mb_data["a"] = dict(
-        mb_recording_id="rec-a", isrc="GBAAA2100001", mb_artist_ids=["art1"]
-    )
-    env.mb_data["b"] = dict(
-        disc_no=2, disc_total=2, track_no=3, track_total=10
-    )  # multi-disc fix changes the file name
+    env.mb_data["a"] = {
+        "mb_recording_id": "rec-a",
+        "isrc": "GBAAA2100001",
+        "mb_artist_ids": ["art1"],
+    }
+    env.mb_data["b"] = {
+        "disc_no": 2,
+        "disc_total": 2,
+        "track_no": 3,
+        "track_total": 10,
+    }  # multi-disc fix changes the file name
     env.playlists["P1"] = ["a", "b"]
     env.sync("P1")
     a = MediaFile(str(env.s.library_dir / "Artist/Album/01 Song a.opus"))
@@ -475,7 +480,7 @@ def test_refresh_tags_applies_musicbrainz_to_existing_library(env):
         is None
     )
     env.new_syncer(mb=True)
-    env.mb_data["a"] = dict(mb_recording_id="rec-a", isrc="GBAAA2100001")
+    env.mb_data["a"] = {"mb_recording_id": "rec-a", "isrc": "GBAAA2100001"}
     rep = env.sync("P1", refresh_tags=True)
     m = MediaFile(str(env.s.library_dir / "Artist/Album/01 Song a.opus"))
     assert (

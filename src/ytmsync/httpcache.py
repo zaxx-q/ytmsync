@@ -13,7 +13,9 @@ class HttpCache:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path, self._tl = path, threading.local()
         with self.conn:
-            self.conn.execute("CREATE TABLE IF NOT EXISTS http_cache(key TEXT PRIMARY KEY, status INTEGER, body TEXT, fetched_at INTEGER)")
+            self.conn.execute(
+                "CREATE TABLE IF NOT EXISTS http_cache(key TEXT PRIMARY KEY, status INTEGER, body TEXT, fetched_at INTEGER)"
+            )
 
     @property
     def conn(self) -> sqlite3.Connection:
@@ -24,9 +26,14 @@ class HttpCache:
         return c
 
     def get(self, key: str) -> tuple[int, str, int] | None:
-        r = self.conn.execute("SELECT status, body, fetched_at FROM http_cache WHERE key=?", (key,)).fetchone()
+        r = self.conn.execute(
+            "SELECT status, body, fetched_at FROM http_cache WHERE key=?", (key,)
+        ).fetchone()
         return (r[0], r[1], r[2]) if r else None
 
     def put(self, key: str, status: int, body: str) -> None:
         with self.conn:
-            self.conn.execute("INSERT OR REPLACE INTO http_cache VALUES(?,?,?,?)", (key, status, body, int(time.time())))
+            self.conn.execute(
+                "INSERT OR REPLACE INTO http_cache VALUES(?,?,?,?)",
+                (key, status, body, int(time.time())),
+            )

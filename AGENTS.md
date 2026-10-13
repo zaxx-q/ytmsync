@@ -24,7 +24,7 @@ ytmsync/
 │   ├── doctor.py          # Diagnostic suite (ffmpeg/libopus, JS, cookies, endpoints)
 │   ├── cover.py           # Cover upscaling, flat-border crop vs dominant pad
 │   └── lyrics/
-│       ├── chain.py       # Priority orchestrator (ytmusic → lrclib → synced → captions)
+│       ├── chain.py       # Priority orchestrator (captions → lrclib → synced → ytmusic)
 │       ├── lrc.py         # Line-level LRC parser and centisecond formatter
 │       ├── match.py       # Bigram-Dice similarity cross-validation against YTM text
 │       └── providers/     # Base, lrclib, synced (Musixmatch/NetEase), ytcaptions, ytmusic

@@ -39,7 +39,7 @@ class Settings:
     mp3_quality: str = "0"  # ffmpeg VBR scale 0 (best) .. 9
     lyrics: bool = True
     lyrics_providers: list[str] = field(
-        default_factory=lambda: ["ytmusic", "lrclib", "syncedlyrics", "ytcaptions"]
+        default_factory=lambda: ["ytcaptions", "lrclib", "syncedlyrics", "ytmusic"]
     )
     embed_lyrics: bool = True
     lrc: bool = True  # write sidecar .lrc when lyrics are synced
@@ -111,7 +111,7 @@ threads = 3
 # cookies = "~/cookies.txt"            # needed for private playlists / Liked Music
 # cookies_from_browser = "firefox"
 lyrics = true
-lyrics_providers = ["ytmusic", "lrclib", "syncedlyrics", "ytcaptions"]   # order = priority; unknown names are ignored
+lyrics_providers = ["ytcaptions", "lrclib", "syncedlyrics", "ytmusic"]   # order = priority; unknown names are ignored
 # musicbrainz = true                   # MBIDs, ISRC, disc numbers (1 request/second, so it slows big first syncs)
 # contact = "you@example.com"          # required when musicbrainz = true
 lrc = true                 # sidecar .lrc files

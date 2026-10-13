@@ -17,10 +17,10 @@ log = logging.getLogger("ytmsync.lyrics")
 PROVIDERS = {
     p.name: p
     for p in (
-        YtMusicProvider(),
+        YtCaptionsProvider(),
         LrcLibProvider(),
         SyncedLyricsProvider(),
-        YtCaptionsProvider(),
+        YtMusicProvider(),
     )
 }
 RANK = {"synced": 2, "plain": 1}

@@ -176,7 +176,7 @@ def test_covers():
 
 
 def test_default_providers_are_all_registered_and_ordered_by_quality():
-    assert list(PROVIDERS) == ["ytmusic", "lrclib", "syncedlyrics", "ytcaptions"]
+    assert list(PROVIDERS) == ["ytcaptions", "lrclib", "syncedlyrics", "ytmusic"]
     assert Settings().lyrics_providers == list(PROVIDERS)
     assert PROVIDERS["syncedlyrics"].fuzzy and not getattr(
         PROVIDERS["lrclib"], "fuzzy", False

@@ -126,7 +126,7 @@ Changing the template later **moves** existing files on the next `sync`. `{playl
 
 ## Lyrics
 
-Default order (`lyrics_providers` in the config): **YouTube Music** → **LRCLIB** → **Musixmatch/NetEase** (via `syncedlyrics`) → **creator-uploaded YouTube captions**.
+Default order (`lyrics_providers` in the config): **creator-uploaded YouTube captions** → **LRCLIB** → **Musixmatch/NetEase** (via `syncedlyrics`) → **YouTube Music**.
 The first plausible _synced_ result wins; otherwise plain text is embedded. Candidates that don't resemble YouTube's own text, or that don't fit the track length, are rejected.
 Tracks that only got plain/no lyrics are retried after 14 days and upgraded to synced when possible. Opus/M4A store LRC text in the lyrics tag; MP3 gets plain `USLT` + timed `SYLT`.
 Musixmatch/NetEase are unofficial endpoints and may stop working — remove `syncedlyrics` from `lyrics_providers` if they misbehave.

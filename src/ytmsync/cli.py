@@ -162,6 +162,16 @@ def print_report(rep: Report, dry_run: bool) -> int:
         console.print(
             f"[yellow]{len(rep.unavailable)} unavailable (private/deleted/region-locked) — skipped.[/yellow]"
         )
+        for vid in rep.unavailable[:20]:
+            title, artist = rep.unavailable_details.get(vid, ("", ""))
+            if title and artist:
+                console.print(f"  [yellow]skipped[/yellow] {vid}: {title} - {artist}")
+            elif title:
+                console.print(f"  [yellow]skipped[/yellow] {vid}: {title}")
+            else:
+                console.print(f"  [yellow]skipped[/yellow] {vid}")
+        if len(rep.unavailable) > 20:
+            console.print(f"  [dim]... and {len(rep.unavailable) - 20} more[/dim]")
     for vid, err in rep.failed[:20]:
         console.print(f"[red]failed[/red] {vid}: {err}")
     for pid, err in rep.playlist_errors.items():

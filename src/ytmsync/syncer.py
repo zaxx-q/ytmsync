@@ -60,6 +60,7 @@ class Report:
     retagged: int = 0
     failed: list[tuple[str, str]] = field(default_factory=list)
     unavailable: list[str] = field(default_factory=list)
+    unavailable_details: dict[str, tuple[str, str]] = field(default_factory=dict)
     playlist_errors: dict[str, str] = field(default_factory=dict)
     plan: Plan | None = None
     planned_moves: list[tuple[str, str, str, str]] = field(default_factory=list)
@@ -102,6 +103,32 @@ class Syncer:
         self.scoped = is_playlist_scoped(s.path_template)
         self._titles: dict[str, str] = {}
         self._pos: dict[tuple[str, str], int] = {}
+        self._entry_meta: dict[str, tuple[str, str]] = {}
+
+    def _resolve_track_info(
+        self, vid: str, meta: TrackMeta | None = None
+    ) -> tuple[str, str]:
+        if meta:
+            title = meta.title or ""
+            artist = ", ".join(meta.artists) if meta.artists else ""
+            if title or artist:
+                return title, artist
+        row = self.db.get_track(vid)
+        if row and row["meta_json"]:
+            try:
+                mj = json.loads(row["meta_json"])
+                title = mj.get("title") or ""
+                artists = mj.get("artists") or []
+                artist = (
+                    ", ".join(artists)
+                    if isinstance(artists, list)
+                    else str(artists or "")
+                )
+                if title or artist:
+                    return title, artist
+            except Exception:
+                pass
+        return self._entry_meta.get(vid, ("", ""))
 
     # ------------------------------------------------------------------ path helpers
     def _base_rel(self, meta: TrackMeta, scope: str, ext: str) -> str:
@@ -180,6 +207,11 @@ class Syncer:
             shutil.rmtree(stale, ignore_errors=True)
 
         infos = self._enumerate(sources, opts, rep)
+        self._entry_meta = {
+            e.video_id: (e.title, getattr(e, "artist", ""))
+            for i in infos.values()
+            for e in i.entries
+        }
         fresh = {
             pid: [(e.position, e.video_id) for e in i.entries]
             for pid, i in infos.items()
@@ -215,6 +247,8 @@ class Syncer:
         )
         rep.plan = plan
         rep.unavailable = list(plan.skipped_unavailable)
+        for vid in rep.unavailable:
+            rep.unavailable_details[vid] = self._resolve_track_info(vid)
         rep.planned_moves = self._plan_moves(
             db.files_all(), {d[:2] for d in plan.delete}
         )
@@ -256,6 +290,7 @@ class Syncer:
             if s.m3u:
                 self._write_playlists(merged)
         finally:
+            self._entry_meta.clear()
             shutil.rmtree(
                 s.tmp_dir, ignore_errors=True
             )  # also on Ctrl-C: no half-built files linger
@@ -355,11 +390,20 @@ class Syncer:
     ) -> None:
         """Main thread only: move the finished file(s) into the library and record them."""
         if not res.ok:
-            self.db.set_track_failed(res.video_id, res.status, res.error or "")
+            self.db.set_track_failed(
+                res.video_id,
+                res.status,
+                res.error or "",
+                meta_json=res.meta.to_json() if res.meta else None,
+            )
             if res.status == "failed":
                 rep.failed.append((res.video_id, res.error or ""))
             else:
-                rep.unavailable.append(res.video_id)
+                if res.video_id not in rep.unavailable:
+                    rep.unavailable.append(res.video_id)
+                rep.unavailable_details[res.video_id] = self._resolve_track_info(
+                    res.video_id, res.meta
+                )
             log.warning("%s: %s", res.video_id, res.error)
             return
         meta, audio = res.meta, res.audio

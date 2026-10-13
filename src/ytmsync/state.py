@@ -162,14 +162,16 @@ class Db:
             )
 
     def set_track_failed(
-        self, vid: str, status: str, error: str
+        self, vid: str, status: str, error: str, meta_json: dict | None = None
     ) -> None:  # status: 'failed' | 'unavailable'
+        mj = json.dumps(meta_json, ensure_ascii=False) if meta_json else None
         with self.conn:
             self.conn.execute(
-                """INSERT INTO tracks(video_id,status,error,attempts,updated_at) VALUES(?,?,?,1,?)
+                """INSERT INTO tracks(video_id,status,meta_json,error,attempts,updated_at) VALUES(?,?,?,?,1,?)
                    ON CONFLICT(video_id) DO UPDATE SET status=excluded.status, error=excluded.error,
+                     meta_json=COALESCE(excluded.meta_json, tracks.meta_json),
                      attempts=attempts+1, updated_at=excluded.updated_at""",
-                (vid, status, error[:500], int(time.time())),
+                (vid, status, mj, error[:500], int(time.time())),
             )
 
     def set_lyrics_state(self, vid: str, kind: str, source: str | None) -> None:

@@ -153,6 +153,7 @@ class PlaylistEntry:
     title: str
     position: int  # 1-based
     available: bool = True
+    artist: str = ""
 
 
 @dataclass
@@ -187,9 +188,22 @@ def enumerate_playlist(s: Settings, src: Source) -> PlaylistInfo:
         if not e or not e.get("id"):
             continue
         title = e.get("title") or ""
+        artist = (
+            e.get("artist")
+            or ", ".join(e.get("artists") or [])
+            or e.get("uploader")
+            or e.get("channel")
+            or ""
+        )
+        if artist:
+            artist = re.sub(r"\s*-\s*Topic$", "", str(artist)).strip()
         entries.append(
             PlaylistEntry(
-                e["id"], title, i, available=not _UNAVAILABLE_TITLE.match(title)
+                e["id"],
+                title,
+                i,
+                available=not _UNAVAILABLE_TITLE.match(title),
+                artist=artist,
             )
         )
     return PlaylistInfo(src.id, info.get("title") or src.id, entries)

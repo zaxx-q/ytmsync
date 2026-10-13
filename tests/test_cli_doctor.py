@@ -281,3 +281,54 @@ def test_cli_musicbrainz_flags(app, monkeypatch):
             "me@example.com",
         ).output
     )
+
+
+def test_print_report_unavailable_details(monkeypatch):
+    from io import StringIO
+
+    from rich.console import Console
+
+    from ytmsync.syncer import Report
+
+    out = StringIO()
+    monkeypatch.setattr(
+        climod, "console", Console(file=out, force_terminal=False, color_system=None)
+    )
+    rep = Report(
+        unavailable=["vid1", "vid2", "vid3"],
+        unavailable_details={
+            "vid1": ("Song Title", "Artist Name"),
+            "vid2": ("[Private video]", ""),
+        },
+    )
+    climod.print_report(rep, False)
+    text = out.getvalue()
+    assert "3 unavailable (private/deleted/region-locked) — skipped." in text
+    assert "skipped vid1: Song Title - Artist Name" in text
+    assert "skipped vid2: [Private video]" in text
+    assert "skipped vid3" in text
+
+
+def test_print_report_unavailable_truncation(monkeypatch):
+    from io import StringIO
+
+    from rich.console import Console
+
+    from ytmsync.syncer import Report
+
+    out = StringIO()
+    monkeypatch.setattr(
+        climod, "console", Console(file=out, force_terminal=False, color_system=None)
+    )
+    vids = [f"vid{i}" for i in range(25)]
+    rep = Report(
+        unavailable=vids,
+        unavailable_details={v: (f"Title {v}", f"Artist {v}") for v in vids},
+    )
+    climod.print_report(rep, False)
+    text = out.getvalue()
+    assert "25 unavailable (private/deleted/region-locked) — skipped." in text
+    assert "skipped vid0: Title vid0 - Artist vid0" in text
+    assert "skipped vid19: Title vid19 - Artist vid19" in text
+    assert "skipped vid20" not in text
+    assert "... and 5 more" in text

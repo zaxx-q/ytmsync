@@ -261,6 +261,43 @@ def test_unavailable_entries_from_enumeration_are_skipped(env):
     )
 
 
+def test_unavailable_entries_details_populated(env):
+    from ytmsync.ytdl import PlaylistEntry, PlaylistInfo
+
+    seed(env, "a")
+    env.syncer.enumerate_fn = lambda s, src: PlaylistInfo(
+        "P1",
+        "P1",
+        [
+            PlaylistEntry("a", "", 1),
+            PlaylistEntry("gone", "Song A", 2, available=False, artist="Artist A"),
+        ],
+    )
+    rep = env.syncer.run([Source("playlist", "P1")], SyncOptions())
+    assert rep.unavailable == ["gone"]
+    assert rep.unavailable_details["gone"] == ("Song A", "Artist A")
+
+
+def test_unavailable_download_failure_details_populated(env):
+    seed(env, "a")
+    env.playlists["P1"] = ["a"]
+    env.fail["a"] = DownloadFailure("unavailable", "Video unavailable")
+    rep = env.sync("P1")
+    assert rep.unavailable == ["a"]
+    assert rep.unavailable_details["a"] == ("Song a", "Artist")
+
+
+def test_unavailable_from_db_meta_on_resync(env):
+    seed(env, "a")
+    env.playlists["P1"] = ["a"]
+    env.fail["a"] = DownloadFailure("unavailable", "Video unavailable")
+    env.sync("P1")  # sets status='unavailable' with meta
+    # Next sync without retry_unavailable
+    rep = env.sync("P1")
+    assert rep.unavailable == ["a"]
+    assert rep.unavailable_details["a"] == ("Song a", "Artist")
+
+
 def test_lyrics_upgrade_plain_to_synced_on_later_sync(env):
     seed(env, "a", "b")
     env.playlists["P1"] = ["a", "b"]

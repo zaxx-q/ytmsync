@@ -119,6 +119,7 @@ def process_track(video_id: str, ctx: Ctx, on_progress=None) -> JobResult:
             video_id,
             False,
             "unavailable" if e.kind == "unavailable" else "failed",
+            meta=meta,
             error=f"{e.kind}: {e}"[:500],
         )
     except Exception as e:  # tagging bug, disk full, ...

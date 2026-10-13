@@ -97,3 +97,38 @@ def test_needs_move():
     assert not needs_move("a/b/01 T.opus", "a/b/01 T.opus", "vid")
     assert not needs_move("a/b/01 T [vid].opus", "a/b/01 T.opus", "vid")
     assert needs_move("Old/01 T.opus", "a/b/01 T.opus", "vid")
+
+
+def test_layout_flip_rekeys_doomed_donor_instead_of_copy_plus_delete():
+    files = F(("a", "P1"), ("b", "P1"))  # playlist-layout library
+    p = make_plan({"P1": [(1, "a"), (2, "b")]}, files, {"a": "ok"}, False, ALWAYS)
+    assert p.copy == [] and p.download == []
+    assert sorted(p.rescope) == [("a", "", "P1"), ("b", "", "P1")]
+    assert p.delete == []
+
+
+def test_layout_flip_rescues_unavailable_tracks_that_cannot_be_refetched():
+    files = F(("u", "P1"))  # on disk, but the track is unavailable upstream
+    p = make_plan(
+        {"P1": [(1, "u")]},
+        files,
+        {"u": "unavailable"},
+        False,
+        ALWAYS,
+    )
+    assert p.download == [] and p.skipped_unavailable == ["u"]
+    assert p.rescope == [("u", "", "P1")] and p.delete == []
+
+
+def test_layout_flip_ignores_stale_rows_whose_file_is_already_gone():
+    files = F(("u", "P1"))
+    p = make_plan(
+        {"P1": [(1, "u")]}, files, {"u": "unavailable"}, False, lambda _p: False
+    )
+    assert p.rescope == [] and p.delete == [("u", "P1", "u.opus")]
+
+
+def test_song_moving_between_playlists_rekeys_scoped_file_not_copy_plus_delete():
+    files = F(("a", "P1"))
+    p = make_plan({"P2": [(1, "a")]}, files, {"a": "ok"}, True, ALWAYS)
+    assert p.rescope == [("a", "P2", "P1")] and p.copy == [] and p.delete == []

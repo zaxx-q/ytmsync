@@ -526,3 +526,142 @@ def test_refresh_tags_applies_musicbrainz_to_existing_library(env):
         and m.isrc == "GBAAA2100001"
         and m.lyrics.startswith("[00:01.00]keep")
     )
+
+
+def test_layout_flip_playlist_to_library_moves_files_instead_of_wiping(make_env):
+    e = make_env(layout="playlist")
+    seed(e, "a", "b")
+    e.titles["P1"] = "Mix"
+    e.playlists["P1"] = ["a", "b"]
+    e.sync("P1")
+    assert e.files() == [
+        "Mix/001 Artist - Song a.opus",
+        "Mix/002 Artist - Song b.opus",
+    ]
+    e.download_calls.clear()
+    e.new_syncer(
+        layout="library"
+    )  # back to default layout (the "forgot --layout" footgun)
+    rep = e.sync("P1")
+    assert (rep.added, rep.copied, rep.moved, rep.removed) == (0, 0, 2, 0)
+    assert e.download_calls == []
+    assert e.files() == [
+        "Artist/Album/01 Song a.opus",
+        "Artist/Album/02 Song b.opus",
+    ]
+    assert e.db.path_owner("Artist/Album/01 Song a.opus") == ("a", "")
+    assert not (e.s.library_dir / "Mix").exists()
+
+
+def test_layout_flip_preserves_unavailable_tracks_file(make_env):
+    from ytmsync.ytdl import PlaylistEntry, PlaylistInfo
+
+    e = make_env(layout="playlist")
+    seed(e, "a", "u")
+    e.titles["P1"] = "Mix"
+    e.playlists["P1"] = ["a", "u"]
+    e.sync("P1")
+    assert e.files() == [
+        "Mix/001 Artist - Song a.opus",
+        "Mix/002 Artist - Song u.opus",
+    ]
+    e.download_calls.clear()
+    e.new_syncer(layout="library")
+    e.syncer.enumerate_fn = lambda s, src: PlaylistInfo(  # u went private upstream
+        "P1",
+        "Mix",
+        [
+            PlaylistEntry("a", "", 1),
+            PlaylistEntry("u", "[Deleted video]", 2, available=False),
+        ],
+    )
+    rep = e.sync("P1")
+    assert rep.unavailable == ["u"] and e.download_calls == []
+    assert (
+        rep.removed == 0
+        and "Artist/Album/02 Song u.opus" in e.files()
+        and e.db.files_all()[("u", "")].path == "Artist/Album/02 Song u.opus"
+    )
+
+
+def test_layout_flip_library_to_playlist_moves_into_playlist_scope(make_env):
+    e = make_env()  # library layout
+    seed(e, "a", "b")
+    e.titles["P1"] = "Mix"
+    e.playlists["P1"] = ["a", "b"]
+    e.sync("P1")
+    e.download_calls.clear()
+    e.new_syncer(layout="playlist")
+    rep = e.sync("P1")
+    assert (rep.added, rep.copied, rep.moved, rep.removed) == (0, 0, 2, 0)
+    assert e.files() == [
+        "Mix/001 Artist - Song a.opus",
+        "Mix/052 Artist - Song b.opus",  # playlist_index from merged DB membership
+    ] or e.files() == [
+        "Mix/001 Artist - Song a.opus",
+        "Mix/002 Artist - Song b.opus",
+    ]
+    assert e.db.path_owner("Mix/001 Artist - Song a.opus") == ("a", "P1")
+    assert not (e.s.library_dir / "Artist").exists()
+
+
+def test_layout_flip_dry_run_shows_moves_and_no_deletes(make_env):
+    e = make_env(layout="playlist")
+    seed(e, "a")
+    e.titles["P1"] = "Mix"
+    e.playlists["P1"] = ["a"]
+    e.sync("P1")
+    before = e.files()
+    e.new_syncer(layout="library")
+    rep = e.sync("P1", dry_run=True)
+    assert rep.plan.delete == [] and rep.plan.copy == []
+    assert len(rep.planned_moves) == 1 and rep.plan.rescope == [("a", "", "P1")]
+    assert e.files() == before  # nothing was touched
+
+
+def test_unsubscribe_prune_leaves_rekeyed_donors_alone(make_env):
+    e = make_env(layout="playlist")
+    seed(e, "a")
+    e.titles.update(P1="Mix One", P2="Mix Two")
+    e.playlists.update(P1=["a"], P2=["a"])
+    e.sync("P1", "P2")
+    e.playlists["P1"] = []
+    e.sync("P1", allow_empty=True)
+    assert e.files() == ["Mix Two/001 Artist - Song a.opus"]
+
+
+def test_rerun_after_layout_flip_is_stable(make_env):
+    e = make_env(layout="playlist")
+    seed(e, "a")
+    e.titles["P1"] = "Mix"
+    e.playlists["P1"] = ["a"]
+    e.sync("P1")
+    e.new_syncer(layout="library")
+    e.sync("P1")
+    e.download_calls.clear()
+    rep = e.sync("P1")
+    assert (rep.added, rep.copied, (rep.moved), rep.removed) == (0, 0, 0, 0)
+    assert e.download_calls == []
+    assert e.db.path_owner("Artist/Album/01 Song a.opus") == ("a", "")
+
+
+def test_song_moving_between_playlists_is_rekeyed_without_redownload(make_env):
+    from ytmsync.plan import FileRow
+
+    e = make_env(layout="playlist")
+    seed(e, "a")
+    e.titles.update(P1="Mix One", P2="Mix Two")
+    e.playlists.update(P1=["a"], P2=[])
+    e.sync("P1")
+    assert e.db.files_all() == {
+        ("a", "P1"): FileRow("Mix One/001 Artist - Song a.opus", False)
+    }
+    e.download_calls.clear()
+    e.playlists.update(P1=[], P2=["a"])  # removed from P1, added to P2
+    rep = e.sync("P1", "P2", allow_empty=True)
+    assert (rep.added, rep.copied, rep.moved, rep.removed) == (0, 0, 1, 0)
+    assert e.download_calls == []
+    assert e.files() == ["Mix Two/001 Artist - Song a.opus"]
+    assert e.db.files_all() == {
+        ("a", "P2"): FileRow("Mix Two/001 Artist - Song a.opus", False)
+    }

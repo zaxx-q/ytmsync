@@ -274,9 +274,17 @@ class Syncer:
         rep.unavailable = list(plan.skipped_unavailable)
         for vid in rep.unavailable:
             rep.unavailable_details[vid] = self._resolve_track_info(vid)
+
+        # Re-keyed donors (layout flips, songs switching playlists) move instead of copy+delete;
+        # plan.delete already excludes them, so they must be skipped here too.
+        rekeyed = {(v, ds) for v, _, ds in plan.rescope}
         rep.planned_moves = self._plan_moves(
-            db.files_all(), {d[:2] for d in plan.delete}
+            db.files_all(), {d[:2] for d in plan.delete} | rekeyed
         )
+        for vid, scope, donor_scope in plan.rescope:
+            pair = self._rescope_pair(vid, scope, donor_scope)
+            if pair:
+                rep.planned_moves.append((vid, scope, *pair))
 
         if opts.dry_run:
             return rep
@@ -302,9 +310,17 @@ class Syncer:
                 rep.removed += 1
             if opts.refresh_tags:
                 self._refresh_tags(rep)
-            for vid, scope, old_rel, new_rel in self._plan_moves(db.files_all(), set()):
+            for (
+                vid,
+                scope,
+                old_rel,
+                new_rel,
+            ) in self._plan_moves(db.files_all(), rekeyed):
                 self._move(vid, scope, old_rel, new_rel)
                 rep.moved += 1
+            for vid, scope, donor in plan.rescope:
+                if self._rescope(vid, scope, donor):
+                    rep.moved += 1
             for vid, scope, donor in plan.copy:
                 if self._copy(vid, scope, donor):
                     rep.copied += 1
@@ -376,6 +392,38 @@ class Syncer:
         self.db.upsert_file(
             vid, scope, rel, dst.suffix.lstrip("."), dst.stat().st_size, donor.pinned
         )
+        return True
+
+    def _rescope_pair(
+        self, vid: str, scope: str, donor_scope: str
+    ) -> tuple[str, str] | None:
+        """(old_rel, new_rel) a dying-scope file would be re-homed to (dry-run listing)."""
+        donor, meta = self.db.files_all().get((vid, donor_scope)), self._meta(vid)
+        if not donor or not meta:
+            return None
+        base = self._base_rel(meta, scope, Path(donor.path).suffix.lstrip("."))
+        return donor.path, self._resolve(base, vid, scope)
+
+    def _rescope(self, vid: str, scope: str, donor_scope: str) -> bool:
+        """Layout flip: the donor scope is being abandoned, so move its file and re-key the row."""
+        files = self.db.files_all()
+        donor, meta = files.get((vid, donor_scope)), self._meta(vid)
+        if not donor or not meta or not self._abs(donor.path).exists():
+            return False
+        src = self._abs(donor.path)
+        rel = self._resolve(
+            self._base_rel(meta, scope, src.suffix.lstrip(".")), vid, scope
+        )
+        dst = self._abs(rel)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(src, dst)
+        if src.with_suffix(".lrc").exists():
+            os.replace(src.with_suffix(".lrc"), dst.with_suffix(".lrc"))
+        prune_empty_dirs(src.parent, self.lib)
+        self.db.upsert_file(
+            vid, scope, rel, dst.suffix.lstrip("."), dst.stat().st_size, donor.pinned
+        )
+        self.db.delete_file_row(vid, donor_scope)
         return True
 
     # ------------------------------------------------------------------ downloads
@@ -576,6 +624,8 @@ class Syncer:
             lambda rel: True,
         )
         for vid, scope, rel in plan.delete:
+            # rescopes are deliberately not applied here: those files are still referenced by another
+            # subscription and will be re-keyed by the next `sync` (prune has no playlist titles for paths)
             self._remove_file(vid, scope, rel)
             rep.removed += 1
         return rep

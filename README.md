@@ -122,7 +122,7 @@ Two presets, or your own template:
 | `playlist`          | `{playlist}/{playlist_index:03d} {artist} - {title}` | stored once **per playlist** (copied, not re-downloaded) |
 
 Variables: `{artist} {artists} {albumartist} {album} {title} {track} {tracktotal} {disc} {disctotal} {year} {video_id} {playlist} {playlist_index} {playlist_id}`; integers accept format specs like `{track:02d}`.
-Changing the template later **moves** existing files on the next `sync`. `{playlist_index}` changes when you reorder a playlist (files get renamed). `--format` applies to _new_ downloads only.
+Changing the template or layout later **moves** existing files on the next `sync` — nothing is re-downloaded or deleted (a playlist-layout library flipped back to `library` re-homes each file, it doesn't wipe it). `{playlist_index}` changes when you reorder a playlist (files get renamed). `--format` applies to _new_ downloads only.
 
 ## Lyrics
 

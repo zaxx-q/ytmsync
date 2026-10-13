@@ -25,6 +25,9 @@ class Plan:
     copy: list[tuple[str, str, str]] = field(
         default_factory=list
     )  # (video_id, new_scope, donor_scope)
+    rescope: list[tuple[str, str, str]] = field(
+        default_factory=list
+    )  # (video_id, new_scope, donor_scope): doomed donor re-keyed (moved), not copy+delete
     delete: list[tuple[str, str, str]] = field(
         default_factory=list
     )  # (video_id, scope, rel_path)
@@ -52,6 +55,9 @@ def make_plan(
         for pid, items in members.items()
         for _, vid in items
     }
+    want_by_vid: dict[str, set[str]] = {}
+    for v, s in want:
+        want_by_vid.setdefault(v, set()).add(s)
     have = {k for k, f in files.items() if file_exists(f.path)}
     plan = Plan()
 
@@ -78,9 +84,48 @@ def make_plan(
             plan.scopes.setdefault(vid, []).append(scope)
 
     if delete:
-        for (vid, scope), f in sorted(files.items()):
-            if (vid, scope) not in want and not f.pinned:
-                plan.delete.append((vid, scope, f.path))
+        doomed = {
+            k: f for k, f in sorted(files.items()) if k not in want and not f.pinned
+        }
+        rehomed: dict[tuple[str, str], str] = {}
+
+        # A copy whose donor is doomed (layout flip, song switching playlists) is really a move: re-key the
+        # donor row instead of deleting the file out from under the copy.
+        copies: list[tuple[str, str, str]] = []
+        for vid, scope, donor in plan.copy:
+            if (vid, donor) in doomed and (vid, donor) not in rehomed:
+                plan.rescope.append((vid, scope, donor))
+                rehomed[(vid, donor)] = scope
+            else:
+                copies.append((vid, scope, rehomed.get((vid, donor), donor)))
+        plan.copy = copies
+
+        # Wanted-but-skipped tracks (unavailable, failed without retry) cannot be fetched again; re-key a
+        # doomed row to a wanted scope so their files survive the re-keying instead of being deleted.
+        coming: dict[str, set[str]] = {}
+        for v, s in have:
+            if (v, s) not in doomed:
+                coming.setdefault(v, set()).add(s)
+        for v, ss in plan.scopes.items():
+            coming.setdefault(v, set()).update(ss)
+        for v, s in {(v, s) for v, s, _ in plan.rescope} | {
+            (v, s) for v, s, _ in plan.copy
+        }:
+            coming.setdefault(v, set()).add(s)
+        for key, f in doomed.items():
+            if not file_exists(f.path):
+                continue  # stale row (file already gone): plain delete cleans up the DB
+            missing = sorted(want_by_vid.get(key[0], set()) - coming.get(key[0], set()))
+            if missing:
+                plan.rescope.append((key[0], missing[0], key[1]))
+                rehomed[key] = missing[0]
+                coming.setdefault(key[0], set()).add(missing[0])
+
+        plan.delete = [
+            (vid, scope, f.path)
+            for (vid, scope), f in sorted(doomed.items())
+            if (vid, scope) not in rehomed
+        ]
     return plan
 
 

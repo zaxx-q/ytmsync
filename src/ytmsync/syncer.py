@@ -156,7 +156,14 @@ class Syncer:
         return entry_title, entry_artist
 
     # ------------------------------------------------------------------ path helpers
-    def _base_rel(self, meta: TrackMeta, scope: str, ext: str) -> str:
+    def _base_rel(
+        self,
+        meta: TrackMeta,
+        scope: str,
+        ext: str,
+        *,
+        playlist_video_id: str | None = None,
+    ) -> str:
         artists = meta.artists or ["Unknown Artist"]
         aa = meta.album_artists or artists
         v = {
@@ -172,7 +179,11 @@ class Syncer:
             "year": meta.year or 0,
             "video_id": meta.video_id,
             "playlist": self._titles.get(scope, "Singles"),
-            "playlist_index": self._pos.get((scope, meta.video_id), 0),
+            # `meta.video_id` can be the playable redirect target, while the
+            # playlist and files are keyed by the original playlist entry ID.
+            "playlist_index": self._pos.get(
+                (scope, playlist_video_id or meta.video_id), 0
+            ),
             "playlist_id": scope,
         }
         return render_path(self.s.path_template, v, ext)
@@ -358,7 +369,12 @@ class Syncer:
             meta = self._meta(vid)
             if meta is None:
                 continue
-            base = self._base_rel(meta, scope, Path(f.path).suffix.lstrip("."))
+            base = self._base_rel(
+                meta,
+                scope,
+                Path(f.path).suffix.lstrip("."),
+                playlist_video_id=vid,
+            )
             if needs_move(f.path, base, vid):
                 out.append((vid, scope, f.path, self._resolve(base, vid, scope)))
         return out
@@ -382,7 +398,9 @@ class Syncer:
             return False
         src = self._abs(donor.path)
         rel = self._resolve(
-            self._base_rel(meta, scope, src.suffix.lstrip(".")), vid, scope
+            self._base_rel(meta, scope, src.suffix.lstrip("."), playlist_video_id=vid),
+            vid,
+            scope,
         )
         dst = self._abs(rel)
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -401,7 +419,12 @@ class Syncer:
         donor, meta = self.db.files_all().get((vid, donor_scope)), self._meta(vid)
         if not donor or not meta:
             return None
-        base = self._base_rel(meta, scope, Path(donor.path).suffix.lstrip("."))
+        base = self._base_rel(
+            meta,
+            scope,
+            Path(donor.path).suffix.lstrip("."),
+            playlist_video_id=vid,
+        )
         return donor.path, self._resolve(base, vid, scope)
 
     def _rescope(self, vid: str, scope: str, donor_scope: str) -> bool:
@@ -412,7 +435,9 @@ class Syncer:
             return False
         src = self._abs(donor.path)
         rel = self._resolve(
-            self._base_rel(meta, scope, src.suffix.lstrip(".")), vid, scope
+            self._base_rel(meta, scope, src.suffix.lstrip("."), playlist_video_id=vid),
+            vid,
+            scope,
         )
         dst = self._abs(rel)
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -482,7 +507,11 @@ class Syncer:
         meta, audio = res.meta, res.audio
         ext = audio.suffix.lstrip(".")
         for i, scope in enumerate(scopes):
-            rel = self._resolve(self._base_rel(meta, scope, ext), res.video_id, scope)
+            rel = self._resolve(
+                self._base_rel(meta, scope, ext, playlist_video_id=res.video_id),
+                res.video_id,
+                scope,
+            )
             dst = self._abs(rel)
             dst.parent.mkdir(parents=True, exist_ok=True)
             last = i == len(scopes) - 1

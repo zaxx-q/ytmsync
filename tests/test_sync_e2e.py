@@ -214,6 +214,19 @@ def test_playlist_layout_is_scoped_and_copies_instead_of_redownloading(make_env)
     assert "Mix One/001 Artist - Song b.opus" in e.files() and e.download_calls == []
 
 
+def test_playlist_index_uses_playlist_id_when_metadata_has_redirected_id(make_env):
+    e = make_env(layout="playlist")
+    e.add("playlist-id")
+    # YTM can redirect an unplayable playlist video to a different, playable ID.
+    e.metas["playlist-id"].video_id = "playable-id"
+    e.playlists["P1"] = ["playlist-id"]
+    e.titles["P1"] = "Mix"
+
+    e.sync("P1")
+
+    assert e.files() == ["Mix/001 Artist - Song playlist-id.opus"]
+
+
 def test_failures_are_isolated_recorded_and_retried(env):
     seed(env, "a", "b", "c")
     env.playlists["P1"] = ["a", "b", "c"]
